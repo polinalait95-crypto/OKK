@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Дашборд — Контроль качества звонков (Nova)</title>
+<style>
+  :root{
+    --bg:#F5F6F4; --surface:#FFFFFF; --surface-2:#EEF1EF; --track:#E4E7E4;
+    --text:#1F2A24; --text-2:#5B655E; --text-3:#8B948D; --border:#DDE2DE; --border-2:#C9D1CB;
+    --accent:#2E6E8E; --accent-bg:#E4F0F5;
+    --good:#1D9E75; --good-bg:#DCF3EB; --good-txt:#0F6E56;
+    --warn:#BA7517; --warn-bg:#FBEEDA; --warn-txt:#854F0B;
+    --bad:#C7443B; --bad-bg:#FBE7E5; --bad-txt:#8F2B24;
+    --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',Roboto,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#151815; --surface:#1E231F; --surface-2:#262C27; --track:#323A33;
+      --text:#E8ECE8; --text-2:#A6AFA8; --text-3:#78817A; --border:#313A33; --border-2:#3D473F;
+      --accent:#6FB3CE; --accent-bg:#1C3540;
+      --good:#5DCAA5; --good-bg:#123A30; --good-txt:#9FE1CB;
+      --warn:#E0A544; --warn-bg:#3A2C12; --warn-txt:#FAC775;
+      --bad:#E4796F; --bad-bg:#3A1E1B; --bad-txt:#F3B3AC;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); line-height:1.5; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px; margin:0 auto; padding:24px 20px 40px;}
+  a{color:inherit; text-decoration:none;}
+
+  /* header */
+  .top{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;}
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand .dot{width:38px; height:38px; border-radius:10px; background:var(--accent-bg); color:var(--accent);
+    display:flex; align-items:center; justify-content:center; font-size:20px; flex:none;}
+  .brand h1{font-size:17px; font-weight:600; margin:0;}
+  .brand p{font-size:12.5px; color:var(--text-3); margin:2px 0 0;}
+  .filters{display:flex; gap:6px; flex-wrap:wrap;}
+  .chip{font-size:12.5px; color:var(--text-2); padding:6px 11px; border:1px solid var(--border-2);
+    border-radius:8px; background:var(--surface); display:inline-flex; align-items:center; gap:5px; cursor:default;}
+  .chip.primary{background:var(--accent); color:#fff; border-color:var(--accent);}
+
+  /* metric cards */
+  .metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:14px;}
+  .metric{background:var(--surface-2); border-radius:12px; padding:14px 15px;}
+  .metric .lbl{font-size:12.5px; color:var(--text-2);}
+  .metric .val{font-size:27px; font-weight:600; letter-spacing:-0.5px; margin:2px 0 1px;}
+  .metric .val small{font-size:14px; color:var(--text-3); font-weight:400;}
+  .metric .sub{font-size:12px; color:var(--text-3);}
+  .metric .sub.up{color:var(--good);}
+  .metric .val.bad{color:var(--bad);} .metric .val.warn{color:var(--warn);}
+
+  /* panels grid */
+  .row{display:grid; gap:14px; margin-bottom:14px;}
+  .row.two{grid-template-columns:repeat(auto-fit,minmax(320px,1fr));}
+  .panel{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 18px;}
+  .panel h2{font-size:14.5px; font-weight:600; margin:0 0 14px; display:flex; align-items:center; justify-content:space-between;}
+  .panel h2 .hint{font-size:11.5px; color:var(--text-3); font-weight:400;}
+  .link{color:var(--accent); font-size:12.5px; font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:4px;}
+
+  /* rating */
+  .rrow{display:flex; align-items:center; gap:10px; margin-bottom:9px;}
+  .rrow:last-child{margin-bottom:0;}
+  .rank{width:16px; text-align:center; font-size:12.5px; color:var(--text-3);}
+  .rank.medal{color:var(--warn); font-weight:600;}
+  .rname{width:110px; font-size:12.5px;}
+  .bar{flex:1; height:9px; background:var(--track); border-radius:5px; overflow:hidden;}
+  .bar span{display:block; height:100%; border-radius:5px;}
+  .rval{width:26px; text-align:right; font-size:12.5px; font-weight:600;}
+
+  /* sparkline */
+  svg text{font-family:var(--sans);}
+
+  /* matrix */
+  table.mx{width:100%; border-collapse:collapse; table-layout:fixed;}
+  table.mx td{text-align:center; padding:4px 2px;}
+  table.mx .rowlab{text-align:left; font-size:12px; color:var(--text-2); padding-right:6px; width:78px;}
+  table.mx .collab{font-size:10.5px; color:var(--text-3); padding-bottom:6px;}
+  .cellv{display:inline-block; min-width:34px; padding:3px 0; border-radius:5px; font-size:11.5px; font-weight:500;}
+  .legend{display:flex; gap:14px; margin-top:12px; font-size:11.5px; color:var(--text-2);}
+  .legend i{width:11px; height:11px; border-radius:3px; display:inline-block; vertical-align:-1px; margin-right:4px;}
+
+  /* tonality */
+  .tone{display:flex; height:24px; border-radius:7px; overflow:hidden; margin-bottom:12px;}
+  .tone .p{background:var(--good);} .tone .n{background:var(--track);} .tone .g{background:var(--bad);}
+  .tonekeys{display:flex; justify-content:space-between; font-size:12.5px; color:var(--text-2); margin-bottom:18px;}
+  .tonekeys b{font-weight:600;}
+  .subhead{font-size:13px; font-weight:600; margin-bottom:9px;}
+  .exrow{display:flex; align-items:center; justify-content:space-between; font-size:12.5px; color:var(--text-2); padding:5px 0;}
+  .exrow .ic{width:16px; display:inline-block; color:var(--text-3); margin-right:7px;}
+  .exrow b{color:var(--text); font-weight:600;}
+
+  /* queue */
+  .qrow{display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); font-size:12.5px;}
+  .qrow:first-of-type{border-top:none;}
+  .qphone{width:158px; font-family:var(--mono); font-size:12.5px;}
+  .qname{flex:1; color:var(--text-2);}
+  .qdur{width:44px; color:var(--text-3);}
+  .qstat{width:128px; text-align:right; font-size:11.5px;}
+  .qstat.ok{color:var(--good);} .qstat.wait{color:var(--warn);}
+  .btn{font-size:12.5px; font-weight:500; color:#fff; background:var(--accent); border:none;
+    padding:6px 12px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;}
+
+  .note{font-size:11.5px; color:var(--text-3); margin-top:18px; text-align:center;}
+
+  /* tabler-ish inline icons via unicode fallback removed — using simple glyphs */
+  .g{font-size:15px; line-height:1;}
+  @media (max-width:560px){ .rname{width:84px;} .qname{display:none;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <header class="top">
+    <div class="brand">
+      <div class="dot g">◎</div>
+      <div>
+        <h1>Контроль качества звонков</h1>
+        <p>1–8 сентября 2026 · отдел продаж</p>
+      </div>
+    </div>
+    <div class="filters">
+      <span class="chip">▾ Период</span>
+      <span class="chip">▾ Менеджер</span>
+      <span class="chip">▾ Роль</span>
+      <span class="chip">↓ Экспорт</span>
+    </div>
+  </header>
+
+  <!-- Metrics -->
+  <section class="metrics">
+    <div class="metric">
+      <div class="lbl">Средний балл</div>
+      <div class="val">82<small>/100</small></div>
+      <div class="sub up">↑ +4 к прошлому</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Оценено звонков</div>
+      <div class="val">1 240</div>
+      <div class="sub">охват 46%</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Проблема клиента</div>
+      <div class="val bad">63</div>
+      <div class="sub">5% звонков</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Фидбэк без ответа</div>
+      <div class="val warn">11</div>
+      <div class="sub">ждут менеджера</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Согласие проктора</div>
+      <div class="val">91%</div>
+      <div class="sub">качество оценок</div>
+    </div>
+  </section>
+
+  <!-- Rating + dynamics -->
+  <div class="row two">
+    <section class="panel">
+      <h2>Рейтинг менеджеров <span class="hint">средний балл</span></h2>
+      <div id="rating"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Динамика по неделям <span class="hint">балл</span></h2>
+      <svg viewBox="0 0 320 130" width="100%" height="130" role="img" aria-label="Рост среднего балла с 74 до 82 за 5 недель">
+        <line x1="8" y1="108" x2="312" y2="108" stroke="var(--border)" stroke-width="1"/>
+        <polyline points="24,74 96,62 168,46 240,34 296,30" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
+        <g fill="var(--accent)">
+          <circle cx="24" cy="74" r="4"/><circle cx="96" cy="62" r="4"/><circle cx="168" cy="46" r="4"/><circle cx="240" cy="34" r="4"/><circle cx="296" cy="30" r="4"/>
+        </g>
+        <g fill="var(--text-2)" font-size="11" text-anchor="middle">
+          <text x="24" y="60">74</text><text x="296" y="18">82</text>
+        </g>
+        <g fill="var(--text-3)" font-size="10" text-anchor="middle">
+          <text x="24" y="124">нед. 1</text><text x="96" y="124">нед. 2</text><text x="168" y="124">нед. 3</text><text x="240" y="124">нед. 4</text><text x="296" y="124">сейчас</text>
+        </g>
+      </svg>
+    </section>
+  </div>
+
+  <!-- Matrix + tonality -->
+  <div class="row two">
+    <section class="panel">
+      <h2>Матрица «менеджеры × критерии» <span class="hint">% выполнения</span></h2>
+      <table class="mx" id="matrix"></table>
+      <div class="legend">
+        <span><i style="background:var(--good-bg)"></i>≥ 85</span>
+        <span><i style="background:var(--warn-bg)"></i>60–84</span>
+        <span><i style="background:var(--bad-bg)"></i>&lt; 60</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Тональность разговоров</h2>
+      <div class="tone">
+        <div class="p" style="width:58%"></div>
+        <div class="n" style="width:33%"></div>
+        <div class="g" style="width:9%"></div>
+      </div>
+      <div class="tonekeys">
+        <span><b style="color:var(--good-txt)">58%</b> позитив</span>
+        <span><b style="color:var(--text-2)">33%</b> нейтрально</span>
+        <span><b style="color:var(--bad-txt)">9%</b> негатив</span>
+      </div>
+      <div class="subhead">Без балла (исключены из статистики)</div>
+      <div class="exrow"><span><span class="ic">⚑</span>Не дозвонились / автоответчик</span><b>84</b></div>
+      <div class="exrow"><span><span class="ic">⚑</span>Трубку взял не тот человек</span><b>37</b></div>
+      <div class="exrow"><span><span class="ic">⚑</span>Оценивать нечего (сервисный)</span><b>52</b></div>
+    </section>
+  </div>
+
+  <!-- Queue -->
+  <section class="panel">
+    <h2>Очередь на оценку</h2>
+    <div id="queue"></div>
+  </section>
+
+  <p class="note">Макет главного экрана раздела ОКК в Nova. Данные приведены для примера.</p>
+
+</div>
+
+<script>
+  var rating=[
+    ["1","Смирнова А.",91],["2","Ковалёв И.",88],["3","Орлова М.",85],
+    ["4","Титов Д.",79],["5","Белов С.",68]
+  ];
+  function barColor(v){return v>=85?'var(--good)':(v>=70?'var(--warn)':'var(--bad)');}
+  document.getElementById('rating').innerHTML=rating.map(function(r){
+    var medal=(r[0]<="3")?'rank medal':'rank';
+    return '<div class="rrow">'
+      +'<span class="'+medal+'">'+r[0]+'</span>'
+      +'<span class="rname">'+r[1]+'</span>'
+      +'<span class="bar"><span style="width:'+r[2]+'%; background:'+barColor(r[2])+'"></span></span>'
+      +'<span class="rval">'+r[2]+'</span></div>';
+  }).join('');
+
+  var crit=["Привет.","Потреб.","Цена","Допрод.","След. шаг"];
+  var mgr=[
+    ["Смирнова",[95,90,88,72,93]],
+    ["Ковалёв",[92,85,80,55,88]],
+    ["Орлова",[88,82,90,68,80]],
+    ["Титов",[80,70,65,40,75]]
+  ];
+  function cellStyle(v){
+    if(v>=85) return 'background:var(--good-bg); color:var(--good-txt)';
+    if(v>=60) return 'background:var(--warn-bg); color:var(--warn-txt)';
+    return 'background:var(--bad-bg); color:var(--bad-txt)';
+  }
+  var mx='<tr><td></td>'+crit.map(function(c){return '<td class="collab">'+c+'</td>';}).join('')+'</tr>';
+  mx+=mgr.map(function(m){
+    return '<tr><td class="rowlab">'+m[0]+'</td>'+m[1].map(function(v){
+      return '<td><span class="cellv" style="'+cellStyle(v)+'">'+v+'</span></td>';
+    }).join('')+'</tr>';
+  }).join('');
+  document.getElementById('matrix').innerHTML=mx;
+
+  var q=[
+    ["+7 961 216-27-97","Ковалёв И.","1:25","ok","✓ транскрипт готов"],
+    ["+7 995 396-95-25","Орлова М.","1:27","ok","✓ транскрипт готов"],
+    ["+7 473 234-71-40","Титов Д.","1:32","wait","⋯ в обработке"],
+    ["+7 930 678-15-32","Смирнова А.","0:33","ok","✓ транскрипт готов"],
+    ["+7 923 107-83-36","Белов С.","1:42","wait","⋯ в обработке"]
+  ];
+  document.getElementById('queue').innerHTML=q.map(function(r){
+    return '<div class="qrow">'
+      +'<span class="qphone">'+r[0]+'</span>'
+      +'<span class="qname">'+r[1]+'</span>'
+      +'<span class="qdur">'+r[2]+'</span>'
+      +'<span class="qstat '+r[3]+'">'+r[4]+'</span></div>';
+  }).join('');
+</script>
+</body>
+</html>
